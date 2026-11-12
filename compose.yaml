@@ -1,0 +1,16 @@
+# One-shot CLI container; run through ./vp, not `docker compose up`.
+services:
+  vp:
+    build: .
+    image: video-prep:latest
+    user: "${VP_UID:-1000}:${VP_GID:-1000}"
+    working_dir: /data
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+      - VIDEOPREP_WORK=/data/work
+    volumes:
+      - ./src:/data/src:ro           # source videos (gitignored)
+      - ./work:/data/work            # jobs: audio, transcripts, outputs, stills (gitignored)
+      - ./models:/models             # model cache (gitignored)
+      - ./videoprep:/app/videoprep:ro  # live code, so edits don't need a rebuild
+    # no ports: this is a batch tool

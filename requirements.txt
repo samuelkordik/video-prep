@@ -1,0 +1,10 @@
+# CPU-only stack (trantor has no usable GPU). torch comes from the CPU wheel index.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1+cpu
+torchaudio==2.5.1+cpu
+faster-whisper==1.1.1
+speechbrain==1.0.3
+pyannote.audio==3.3.2
+scikit-learn>=1.4,<1.7
+numpy<2
+pillow>=10

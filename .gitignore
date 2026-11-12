@@ -1,0 +1,7 @@
+# media and generated files never go in git
+src/
+work/
+models/
+.env
+__pycache__/
+*.pyc

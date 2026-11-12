@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Run the video-prep CLI in its container. Paths are relative to this repo:
+#   ./vp transcribe "src/My Video.mov" --speakers 2
+#   ./vp stills my-video --best 12
+# Set VP_NOTIFY=1 to send a homelab alert when a long command finishes.
+set -uo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$DIR"
+mkdir -p src work models
+[ -f .env ] && set -a && . ./.env && set +a
+export VP_UID="$(id -u)" VP_GID="$(id -g)"
+docker compose run --rm -T vp "$@"
+rc=$?
+NOTIFY="${HOME}/dev/homelab/notify/notify.sh"
+if [ "${VP_NOTIFY:-0}" = 1 ] && [ -x "$NOTIFY" ]; then
+  if [ $rc = 0 ]; then "$NOTIFY" -t "video-prep" "vp $1 finished" >/dev/null
+  else "$NOTIFY" -t "video-prep" "vp $1 FAILED (exit $rc)" >/dev/null; fi
+fi
+exit $rc
