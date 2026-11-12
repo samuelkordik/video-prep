@@ -225,7 +225,7 @@ def diarize_ecapa(audio_path: Path, words: list[dict], num_speakers=None,
     audio = load_wav(audio_path)
     total = len(audio) / SR
     wins = speech_windows(words, total)
-    log(f"diarize (ecapa): {len(wins)} windows over {sum(b - a for a, b in wins) / 60:.1f} min")
+    log(f"diarize (ecapa): {len(wins)} windows of {WIN}s (hop {HOP}s)")
     if not wins:
         return {"method": "ecapa", "num_speakers": 1, "labels": [0] * len(words)}
     emb = embed_windows(audio, wins)

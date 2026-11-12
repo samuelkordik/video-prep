@@ -44,6 +44,9 @@ no hostnames; registered in `~/dev/homelab/REGISTRY.md` as `videoprep`.
 5. **Proofread**: skim `out/<name>.transcript.txt` for misheard jargon/names. Fix with
    whole-word replacements (stored in the job, re-applied on every render):
    `./vp fix <job> "nidle decompression=>needle decompression" "Dr. Cordic=>Dr. Kordik"`.
+   **Check on-screen lower thirds** (`./vp stills <job> --at <first_heard>+5s …`): they
+   give the authoritative spelling of names — in testing Whisper wrote "Farouk Mechri"
+   where the lower third reads "Dr. Faroukh Mehkri".
    Spot-check a few low-confidence words in `out/<name>.words.json` (`prob` < 0.5).
 6. **Deliver**: tell the user the paths in `work/<job>/out/`:
    `<name>.srt` (YouTube / NLE import), `<name>.vtt`, `<name>.transcript.txt`.
@@ -70,4 +73,7 @@ no hostnames; registered in `~/dev/homelab/REGISTRY.md` as `videoprep`.
 - `vp diarize` resets speaker names (labels can change meaning); re-name afterwards.
 
 ## Measured speed (trantor)
-- (fill in after the first real run)
+- ASR, large-v3-turbo int8, 8 threads: **~1.3× realtime** (4-min test clip in 3.1 min).
+  A 24-min video ≈ 18–20 min. Diarization (ECAPA) adds well under a minute per 10 min.
+- `stills --best N`: seconds (seeks, no full decode). `--scenes` on ProRes: a full decode.
+- Model load ≈ 5 s once cached; first `./vp models` downloads ~1.6 GB.

@@ -5,6 +5,9 @@ import re
 
 from .common import fmt_clock, fmt_srt, fmt_vtt
 
+# don't leave these dangling at the end of a cue when splitting mid-sentence
+WEAK_END = {"a", "an", "the", "and", "or", "but", "of", "to", "in", "on", "at", "for", "with",
+            "by", "from", "as", "that", "is", "are", "was", "we", "i", "you", "it", "if", "so"}
 SENT_END = re.compile(r"[.?!…]['\")\]]*$")
 CLAUSE_END = re.compile(r"[,;:—–-]['\")\]]*$")
 
@@ -87,7 +90,11 @@ def cues(words: list[dict], max_chars: int = 42, max_lines: int = 2, max_dur: fl
                         cur.extend(rest)
                         break
                 if cur and (len(_join(cur + [w])) > limit or w["end"] - cur[0]["start"] > max_dur):
+                    carry = []
+                    while len(cur) > 3 and cur[-1]["word"].strip().lower() in WEAK_END and len(carry) < 2:
+                        carry.insert(0, cur.pop())
                     flush()
+                    cur.extend(carry)
         cur.append(w)
         if SENT_END.search(w["word"].strip()) and len(_join(cur)) >= limit * 0.6:
             flush()
