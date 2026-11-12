@@ -75,7 +75,22 @@ no hostnames; registered in `~/dev/homelab/REGISTRY.md` as `videoprep`.
 - `vp diarize` resets speaker names (labels can change meaning); re-name afterwards.
 
 ## Measured speed (trantor)
-- ASR, large-v3-turbo int8, 8 threads: **~1.3× realtime** (4-min test clip in 3.1 min).
-  A 24-min video ≈ 18–20 min. Diarization (ECAPA) adds well under a minute per 10 min.
-- `stills --best N`: seconds (seeks, no full decode). `--scenes` on ProRes: a full decode.
+- ASR, large-v3-turbo int8, 8 threads: **~1.25–1.4× realtime**. 24-min video (26Q4CE): 19.3 min.
+- Speaker embeddings: ~4 min per 24 min of speech, cached in `work/<job>/embeddings.npz`,
+  so `vp diarize` re-runs take seconds. Whole 24-min job end to end ≈ 24 min.
+- `stills --best N` / `--at`: seconds (seeks, no full decode). `--scenes` on ProRes: a full decode.
 - Model load ≈ 5 s once cached; first `./vp models` downloads ~1.6 GB.
+
+## Lessons from runs
+- 26Q4CE (5 speakers, 2 of them speaking only ~1 min): the first clustering forced to 5
+  split the main presenter in two instead of separating the two short speakers. The
+  clusterer now splits only the group whose halves are least alike (different people
+  ≈ 0.45 similarity, one person ≈ 0.9), and auto-detection found all 5 on its own.
+  If a speaker still looks split, `vp speakers` will show two IDs with the same face —
+  name both the same to merge.
+- Pairs/panels on one shot: name cards appear as each person first speaks; grab
+  `--at` stills over the first seconds of each speaker ID to match faces to IDs.
+- Voice-over has no face: its speaker still is a graphic or B-roll.
+- Common mishears here: BioTel → "Biotel"/"by hotel", WOR/TOR → "war"/"tour",
+  i-gel → "eye gel", ThoraSite → "thoracite", iliac → "elliot", Rescue (the
+  vehicle) lower-cased. Check them on every DFR video.

@@ -7,8 +7,17 @@ from .common import fmt_clock, fmt_srt, fmt_vtt
 
 # don't leave these dangling at the end of a cue when splitting mid-sentence
 WEAK_END = {"a", "an", "the", "and", "or", "but", "of", "to", "in", "on", "at", "for", "with",
-            "by", "from", "as", "that", "is", "are", "was", "we", "i", "you", "it", "if", "so"}
+            "by", "from", "as", "that", "is", "are", "was", "we", "i", "you", "it", "if", "so",
+            "dr.", "mr.", "mrs.", "ms.", "prof."}
 SENT_END = re.compile(r"[.?!…]['\")\]]*$")
+ABBREV = {"dr.", "mr.", "mrs.", "ms.", "st.", "vs.", "e.g.", "i.e.", "no.", "prof."}
+
+
+def is_sent_end(word: str) -> bool:
+    w = word.strip()
+    return bool(SENT_END.search(w)) and w.lower() not in ABBREV
+
+
 CLAUSE_END = re.compile(r"[,;:—–-]['\")\]]*$")
 
 
@@ -42,7 +51,7 @@ def _split_lines(text: str, max_chars: int) -> list[str]:
         if len(a) > max_chars or len(b) > max_chars:
             continue
         score = abs(len(a) - len(b))
-        if CLAUSE_END.search(words[i - 1]) or SENT_END.search(words[i - 1]):
+        if CLAUSE_END.search(words[i - 1]) or is_sent_end(words[i - 1]):
             score -= 8  # prefer breaking after punctuation
         if score < best_score:
             best, best_score = [a, b], score
@@ -83,7 +92,7 @@ def cues(words: list[dict], max_chars: int = 42, max_lines: int = 2, max_dur: fl
                 # back off to the last punctuation break if that leaves a decent cue
                 for j in range(len(cur) - 1, 0, -1):
                     pw = cur[j - 1]["word"].strip()
-                    if (SENT_END.search(pw) or CLAUSE_END.search(pw)) and len(_join(cur[:j])) >= limit * 0.4:
+                    if (is_sent_end(pw) or CLAUSE_END.search(pw)) and len(_join(cur[:j])) >= limit * 0.4:
                         rest = cur[j:]
                         del cur[j:]
                         flush()
@@ -96,7 +105,7 @@ def cues(words: list[dict], max_chars: int = 42, max_lines: int = 2, max_dur: fl
                     flush()
                     cur.extend(carry)
         cur.append(w)
-        if SENT_END.search(w["word"].strip()) and len(_join(cur)) >= limit * 0.6:
+        if is_sent_end(w["word"]) and len(_join(cur)) >= limit * 0.6:
             flush()
     flush()
 
@@ -138,7 +147,7 @@ def paragraphs(words: list[dict], max_para: float = 60.0, pause_break: float = 2
         if cur:
             prev = cur[-1]
             dur = prev["end"] - cur[0]["start"]
-            ended = SENT_END.search(prev["word"].strip())
+            ended = is_sent_end(prev["word"])
             if (w.get("speaker_id") != prev.get("speaker_id")
                     or (ended and dur >= max_para)
                     or (ended and w["start"] - prev["end"] >= pause_break and dur >= 15)

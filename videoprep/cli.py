@@ -47,7 +47,8 @@ def _run_diarize(job: Job, args) -> None:
         job.speakers_path.unlink(missing_ok=True)
         return
     asr = read_json(job.asr_path)
-    res = diarize(job.audio, asr, method=args.diarizer, **_diar_kwargs(args))
+    res = diarize(job.audio, asr, method=args.diarizer, cache=job.dir / "embeddings.npz",
+                  **_diar_kwargs(args))
     res["created"] = now_iso()
     res["requested"] = _diar_kwargs(args)
     write_json(job.diar_path, res)

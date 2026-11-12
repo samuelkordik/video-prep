@@ -132,40 +132,84 @@ def centroids(X: np.ndarray, labels: np.ndarray) -> np.ndarray:
     return _normalize(np.stack([X[labels == c].mean(0) for c in ks])), ks
 
 
-def cluster(emb: np.ndarray, num_speakers: int | None, min_speakers: int | None,
-            max_speakers: int | None) -> tuple[np.ndarray, np.ndarray, dict]:
-    X = _normalize(emb)
-    n = len(X)
-    # spectral is O(n^2) memory / O(n^3) time: cluster a subsample of long files
-    cap = 4000
-    idx = np.arange(n) if n <= cap else np.linspace(0, n - 1, cap).astype(int)
-    max_k = max_speakers or 8
-    labels_s, k, gaps = spectral(X[idx], num_speakers, max_k=max_k)
-    if num_speakers is None and min_speakers and k < min_speakers:
-        labels_s, k, gaps = spectral(X[idx], min_speakers, max_k=max_k)
-    C, _ = centroids(X[idx], labels_s)
-    # a few rounds of centroid refinement over all windows
-    labels = np.argmax(X @ C.T, axis=1)
+SPLIT_SIM = 0.6    # a 2-way split whose halves are less similar than this = two people
+MERGE_SIM = 0.8    # clusters more similar than this = one person
+MIN_PART = 12      # windows (~9 s of speech) each half of a split needs
+
+
+def _split_candidate(X: np.ndarray, idx: np.ndarray):
+    """Best 2-way split of the windows `idx`: (similarity of the halves, labels) or None."""
+    if len(idx) < 2 * MIN_PART:
+        return None
+    s, _, _ = spectral(X[idx], 2, max_k=2)
+    if min(np.bincount(s, minlength=2)) < MIN_PART:
+        return None
+    a = _normalize(X[idx][s == 0].mean(0, keepdims=True))
+    b = _normalize(X[idx][s == 1].mean(0, keepdims=True))
+    return float(a @ b.T), s
+
+
+def _reassign(X: np.ndarray, labels: np.ndarray) -> np.ndarray:
     for _ in range(10):
         C, ks = centroids(X, labels)
         new = np.array(ks)[np.argmax(X @ C.T, axis=1)]
         if np.array_equal(new, labels):
             break
         labels = new
-    info = {"eigengaps": gaps, "estimated": num_speakers is None}
-    if num_speakers is None:
-        # fold clusters with <2% of speech into their nearest neighbour
-        while True:
-            C, ks = centroids(X, labels)
-            share = np.array([(labels == c).mean() for c in ks])
-            if len(ks) <= max(1, min_speakers or 1) or share.min() >= 0.02:
-                break
-            small = ks[int(np.argmin(share))]
-            mask = labels == small
-            others = [i for i, c in enumerate(ks) if c != small]
-            labels[mask] = np.array(ks)[others][np.argmax(X[mask] @ C[others].T, axis=1)]
+    return labels
+
+
+def cluster(emb: np.ndarray, num_speakers: int | None, min_speakers: int | None,
+            max_speakers: int | None) -> tuple[np.ndarray, np.ndarray, dict]:
+    """Spectral clustering (eigengap) for the natural groups, then refine:
+    split the group whose best 2-way split is least self-similar (a voice the
+    first pass lumped together), merge groups that are the same voice, until
+    the requested count / thresholds are met. Splitting by self-similarity
+    keeps a long single speaker from being cut in half to reach a count.
+    """
+    X = _normalize(emb)
+    n = len(X)
+    cap = 4000  # spectral is O(n^2) memory / O(n^3) time: subsample long files
+    sub = np.arange(n) if n <= cap else np.linspace(0, n - 1, cap).astype(int)
+    lo = num_speakers or min_speakers or 1
+    hi = num_speakers or max_speakers or 10
+    lab_s, k0, gaps = spectral(X[sub], None, max_k=min(hi, 8))
+    C, _ = centroids(X[sub], lab_s)
+    labels = _reassign(X, np.argmax(X @ C.T, axis=1))
+    log_steps = [f"eigengap: {k0}"]
+    for _ in range(20):
+        ks = sorted(set(labels.tolist()))
+        C, _ = centroids(X, labels)
+        sims = C @ C.T
+        np.fill_diagonal(sims, -1)
+        i, j = np.unravel_index(np.argmax(sims), sims.shape)
+        best_merge = float(sims[i, j]) if len(ks) > 1 else -1
+        splits = []
+        for c in ks:
+            r = _split_candidate(X, np.nonzero(labels == c)[0])
+            if r:
+                splits.append((r[0], c, r[1]))
+        splits.sort(key=lambda t: t[0])
+        want_split = len(ks) < lo or (len(ks) < hi and splits and splits[0][0] < SPLIT_SIM)
+        want_merge = len(ks) > hi or (len(ks) > lo and best_merge > MERGE_SIM)
+        if want_split and splits:
+            sim, c, s = splits[0]
+            idx = np.nonzero(labels == c)[0]
+            labels = labels.copy()
+            labels[idx[s == 1]] = max(ks) + 1
+            labels = _reassign(X, labels)
+            log_steps.append(f"split (halves sim {sim:.2f})")
+        elif want_merge and best_merge > -1:
+            labels = np.where(labels == ks[j], ks[i], labels)
+            log_steps.append(f"merge (sim {best_merge:.2f})")
+        else:
+            break
     C, ks = centroids(X, labels)
     remap = {c: i for i, c in enumerate(ks)}
+    sims = C @ C.T
+    info = {"eigengaps": gaps, "estimated": num_speakers is None, "steps": log_steps,
+            "centroid_similarity": [[round(float(v), 3) for v in row] for row in sims]}
+    log("clustering: " + "; ".join(log_steps) + f" → {len(ks)} speakers")
     return np.array([remap[c] for c in labels]), C, info
 
 
@@ -221,14 +265,23 @@ def order_by_first_appearance(labels: list[int]) -> list[int]:
 # ---------------------------------------------------------------- backends
 
 def diarize_ecapa(audio_path: Path, words: list[dict], num_speakers=None,
-                  min_speakers=None, max_speakers=None) -> dict:
+                  min_speakers=None, max_speakers=None, cache: Path | None = None) -> dict:
     audio = load_wav(audio_path)
     total = len(audio) / SR
     wins = speech_windows(words, total)
     log(f"diarize (ecapa): {len(wins)} windows of {WIN}s (hop {HOP}s)")
     if not wins:
         return {"method": "ecapa", "num_speakers": 1, "labels": [0] * len(words)}
-    emb = embed_windows(audio, wins)
+    emb = None
+    if cache is not None and cache.exists():
+        z = np.load(cache)
+        if z["wins"].shape == (len(wins), 2) and np.allclose(z["wins"], np.array(wins)):
+            emb = z["emb"]
+            log("using cached speaker embeddings")
+    if emb is None:
+        emb = embed_windows(audio, wins)
+        if cache is not None:
+            np.savez(cache, wins=np.array(wins), emb=emb)
     if num_speakers == 1:
         labels = [0] * len(words)
         info = {"estimated": False}
@@ -240,7 +293,7 @@ def diarize_ecapa(audio_path: Path, words: list[dict], num_speakers=None,
 
 
 def diarize_pyannote(audio_path: Path, words: list[dict], num_speakers=None,
-                     min_speakers=None, max_speakers=None) -> dict:
+                     min_speakers=None, max_speakers=None, cache=None) -> dict:
     import torch
     from pyannote.audio import Pipeline
 

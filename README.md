@@ -72,7 +72,9 @@ Outputs land in `work/<job>/`:
 
 The default `ecapa` diarizer needs no account: it embeds 1.5 s windows of speech with
 SpeechBrain's ECAPA-TDNN model, clusters them (spectral clustering; the eigengap picks
-the count when you don't give one), and gives each word the speaker of the windows
+a first count, then groups whose two halves sound like different people are split and
+groups that sound alike are merged, until the requested count or the thresholds are
+met), caches the embeddings so re-runs are quick, and gives each word the speaker of the windows
 around it. For harder audio (lots of crosstalk), `--diarizer pyannote` runs
 `pyannote/speaker-diarization-3.1`; it needs a Hugging Face token in `.env`
 (`HF_TOKEN=…`) and the model's terms accepted on huggingface.co.
