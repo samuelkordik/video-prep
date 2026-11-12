@@ -12,6 +12,8 @@ no hostnames; registered in `~/dev/homelab/REGISTRY.md` as `videoprep`.
 ## Layout
 - `src/` — source videos (user uploads here; gitignored, mounted read-only).
 - `work/<job>/` — everything a job produces (gitignored). Outputs in `work/<job>/out/`.
+  Samuel may move a finished upload into its own project folder, e.g. `work/26Q4CE/<file>.mov`;
+  then run with `--job 26Q4CE` so the job's files sit next to the source.
 - `models/` — model cache (gitignored). `./vp models` warms it.
 - Always run from the repo root via `./vp …`. Quote paths: file names have spaces and `&`.
 
